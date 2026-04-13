@@ -551,7 +551,36 @@ elif opcion == "➕ Nueva receta":
         if col4.button("❌", key=f"del_{idx}"):
             ingredientes_lista.pop(idx); st.rerun()
 
-    
+    sk_subtitle("Agregar ingrediente")
+    col1, col2, col3 = st.columns(3)
+    lista_catalogo = obtener_nombres_ingredientes()
+    opcion_ing = col1.selectbox("Ingrediente", ["Selecciona ingrediente"] + lista_catalogo + ["Otro..."], key="select_ing_nueva")
+    nuevo_ing  = col1.text_input("Nuevo ingrediente", key="nuevo_ing_nueva") if opcion_ing == "Otro..." else opcion_ing
+    nueva_cant = col2.number_input("Cantidad", min_value=0.1, value=1.0, key="cant_nueva")
+    nueva_uni  = col3.selectbox("Unidad", UNIDADES_RECETA, key="uni_nueva")
+
+    if st.button("➕ Agregar ingrediente", use_container_width=True):
+        if nuevo_ing and nuevo_ing != "Selecciona ingrediente":
+            if not any(i["nombre"] == nuevo_ing.lower().strip() for i in ingredientes_lista):
+                if opcion_ing == "Otro...":
+                    agregar_ingrediente_catalogo(nuevo_ing, nueva_uni)
+                ingredientes_lista.append({"nombre": nuevo_ing.lower().strip(), "cantidad": nueva_cant, "unidad": nueva_uni})
+                st.rerun()
+            else:
+                st.warning("Ese ingrediente ya está")
+        else:
+            st.warning("Selecciona ingrediente")
+
+    st.divider()
+    if st.button("💾 Guardar receta", use_container_width=True):
+        if nombre and ingredientes_lista:
+            texto = "\n".join([f"{i['nombre']}|{i['cantidad']}|{i['unidad']}" for i in ingredientes_lista])
+            guardar_receta(nombre, texto)
+            st.session_state.nueva_receta_ingredientes = []
+            st.success("Receta guardada"); st.rerun()
+        else:
+            st.warning("Falta nombre o ingredientes")
+
 
 # ================= RECETARIO =================
 elif opcion == "📖 Recetario":
