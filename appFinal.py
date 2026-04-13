@@ -538,7 +538,8 @@ elif opcion == "➕ Nueva receta":
     if "nueva_receta_ingredientes" not in st.session_state:
         st.session_state.nueva_receta_ingredientes = []
 
-    nombre = sk_subtitle("Nombre receta")
+    sk_subtitle("Nombre receta")
+    nombre = st.text_input("", placeholder="Ej. Pasta al pesto", label_visibility="collapsed")
     ingredientes_lista = st.session_state.nueva_receta_ingredientes
 
     sk_subtitle("Ingredientes de la receta")
