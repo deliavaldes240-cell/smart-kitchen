@@ -388,7 +388,7 @@ def actualizar_menu(dia, nueva_receta):
 FORZAR_GRAMOS = {"pasta", "arroz", "harina", "azucar", "sal"}
 
 def lista_super():
-    menu_df  = pd.DataFrame(list(col_menu.find()))
+    menu_df  = pd.DataFrame(list(col_menu.find({"user_id": USER_ID})))
     recetas  = cargar_recetas()
     despensa = obtener_despensa()
 
@@ -403,15 +403,30 @@ def lista_super():
             for i in parse_ingredientes(fila.iloc[0]["ingredientes"]):
                 nombre = normalizar(i["nombre"])
                 cant, unidad = convertir_a_base(nombre, float(i["cantidad"]), i["unidad"])
-                # Forzar gramos para ingredientes secos como pasta
                 if nombre in FORZAR_GRAMOS and unidad == "ml":
                     densidad = obtener_densidad(nombre)
                     if densidad:
-                        cant  = cant * densidad
+                        cant   = cant * densidad
                         unidad = "g"
                 ingredientes_menu[nombre]["cantidad"] += cant
                 if not ingredientes_menu[nombre]["unidad"]:
                     ingredientes_menu[nombre]["unidad"] = unidad
+
+    casa = {}
+    if not despensa.empty:
+        for _, row in despensa.iterrows():
+            nombre = normalizar(row["ingrediente"])
+            cant, _ = convertir_a_base(nombre, row["cantidad"], row["unidad"])
+            casa[nombre] = casa.get(nombre, 0) + cant
+
+    agrupado = defaultdict(list)
+    for ing, data in ingredientes_menu.items():
+        falta = data["cantidad"] - casa.get(ing, 0)
+        if falta > 0:
+            agrupado[clasificar(ing)].append((ing, falta, data["unidad"]))
+
+    log_evento("generar_listaSuper")
+    return agrupado
 
     casa = {}
     if not despensa.empty:
