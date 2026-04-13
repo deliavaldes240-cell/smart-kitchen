@@ -465,7 +465,7 @@ if opcion == "📊 Dashboard":
 
     if not logs_df.empty:
         sk_subtitle("📊 Uso de funcionalidades")
-        eventos = logs_df["evento"].value_counts()
+        eventos = logs_df[logs_df["evento"] != "ver_pantalla"]["evento"].value_counts()
         fig, ax = plt.subplots(figsize=(10, 5))
         ax.bar(eventos.index, eventos.values, color="#B23A48")
         ax.set_ylabel("Frecuencia", fontsize=12)
@@ -476,7 +476,14 @@ if opcion == "📊 Dashboard":
         st.pyplot(fig)
 
         sk_subtitle("📈 Actividad de la aplicación")
+       # ANTES (línea actual):
         logs_df["timestamp"] = pd.to_datetime(logs_df["timestamp"])
+        actividad = logs_df.groupby(logs_df["timestamp"].dt.date).size()
+
+        # DESPUÉS (con filtro de seguridad):
+        logs_df = logs_df.dropna(subset=["timestamp"])
+        logs_df["timestamp"] = pd.to_datetime(logs_df["timestamp"], errors="coerce")
+        logs_df = logs_df.dropna(subset=["timestamp"])
         actividad = logs_df.groupby(logs_df["timestamp"].dt.date).size()
         fig2, ax2 = plt.subplots(figsize=(10, 5))
         ax2.plot(actividad.index, actividad.values, marker="o", color="#461220", linewidth=2)
