@@ -475,27 +475,22 @@ if opcion == "📊 Dashboard":
         ax.spines["right"].set_visible(False)
         st.pyplot(fig)
 
-        sk_subtitle("📈 Actividad de la aplicación")
-       # ANTES (línea actual):
+        sk_subtitle("Actividad de la aplicación")
         logs_df["timestamp"] = pd.to_datetime(logs_df["timestamp"])
-        actividad = logs_df.groupby(logs_df["timestamp"].dt.date).size()
+        actividad = logs_df.groupby(logs_df["timestamp"].dt.date).size().reset_index()
+        actividad.columns = ["fecha", "eventos"]
 
-        # DESPUÉS (con filtro de seguridad):
-        logs_df = logs_df.dropna(subset=["timestamp"])
-        logs_df["timestamp"] = pd.to_datetime(logs_df["timestamp"], errors="coerce")
-        logs_df = logs_df.dropna(subset=["timestamp"])
-        actividad = logs_df.groupby(logs_df["timestamp"].dt.date).size()
-        fig2, ax2 = plt.subplots(figsize=(10, 5))
-        ax2.plot(actividad.index, actividad.values, marker="o", color="#461220", linewidth=2)
-        ax2.fill_between(range(len(actividad)), actividad.values, alpha=0.1, color="#B23A48")
-        ax2.set_ylabel("Eventos", fontsize=12)
-        ax2.set_xlabel("Fecha", fontsize=12)
-        ax2.set_title("Actividad diaria", fontsize=14, color="#461220")
-        ax2.set_xticks(range(len(actividad.index)))
-        ax2.set_xticklabels([d.strftime("%d-%m-%Y") for d in actividad.index], rotation=45, ha="right", fontsize=10)
-        ax2.spines["top"].set_visible(False)
-        ax2.spines["right"].set_visible(False)
-        st.pyplot(fig2)
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
+    ax2.plot(actividad["fecha"], actividad["eventos"], marker="o", color="#461220", linewidth=2)
+    ax2.fill_between(actividad["fecha"], actividad["eventos"], alpha=0.1, color="#B23A48")
+    ax2.set_ylabel("Eventos", fontsize=12)
+    ax2.set_xlabel("Fecha", fontsize=12)
+    ax2.set_title("Actividad diaria", fontsize=14, color="#461220")
+    ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%d-%m-%Y"))
+    fig2.autofmt_xdate(rotation=45)
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
+    st.pyplot(fig2)
 
 # ================= INGREDIENTES =================
 # ================= INGREDIENTES =================
