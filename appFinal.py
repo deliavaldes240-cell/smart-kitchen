@@ -101,6 +101,56 @@ section[data-testid="stSidebar"] * { color: #F4F7F2 !important; }
     font-family: 'Inter', sans-serif;
 }
 
+/* ── Toast de éxito ── */
+.toast-success {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 9999;
+    background: #2D6A4F;
+    color: #ffffff;
+    padding: 14px 22px;
+    border-radius: 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: slideIn 0.3s ease, fadeOut 0.5s ease 2.5s forwards;
+    pointer-events: none;
+}
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(-16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to   { opacity: 0; transform: translateY(-10px); }
+}
+
+/* ── Toast de error ── */
+.toast-error {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 9999;
+    background: #7B2D2D;
+    color: #ffffff;
+    padding: 14px 22px;
+    border-radius: 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: slideIn 0.3s ease, fadeOut 0.5s ease 2.5s forwards;
+    pointer-events: none;
+}
+
 /* ── Texto cuerpo general ── */
 .sk-body {
     font-size: 15px;
@@ -163,10 +213,34 @@ def sk_desc(texto):
 
 def sk_body(texto):
     st.markdown(f'<div class="sk-body">{texto}</div>', unsafe_allow_html=True)
+
+# ── Toast system ──────────────────────────────────────
+def show_toast(mensaje, tipo="success"):
+    css_class = "toast-success" if tipo == "success" else "toast-error"
+    icono = "✅" if tipo == "success" else "❌"
+    st.markdown(
+        f'<div class="{css_class}">{icono} {mensaje}</div>',
+        unsafe_allow_html=True
+    )
+
+def set_toast(mensaje, tipo="success"):
+    """Guarda un toast en session_state para mostrarlo después del rerun."""
+    st.session_state["_toast_msg"]  = mensaje
+    st.session_state["_toast_tipo"] = tipo
+
+def render_toast():
+    """Renderiza el toast guardado (si existe) y lo limpia."""
+    if st.session_state.get("_toast_msg"):
+        show_toast(st.session_state["_toast_msg"], st.session_state.get("_toast_tipo", "success"))
+        st.session_state["_toast_msg"]  = None
+        st.session_state["_toast_tipo"] = None
 # ──────────────────────────────────────────────────────
 
 st.markdown('<div class="app-header">🍳 Smart Kitchen</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Organiza tu cocina de forma inteligente</div>', unsafe_allow_html=True)
+
+# Renderizar toast pendiente al inicio de cada página
+render_toast()
 
 # ================= CATÁLOGO =================
 ingredientes_por_categoria = {
@@ -180,9 +254,8 @@ ingredientes_por_categoria = {
 # ================= CONVERSIONES =================
 CONVERSIONES = {"ml": 1, "litro": 1000, "taza": 240, "cucharada": 15, "g": 1, "kg": 1000}
 
-# Densidades para convertir ml → g en ingredientes específicos
 DENSIDADES_DEFAULT = {
-    "pasta":  0.75,   # gramos por ml (seco)
+    "pasta":  0.75,
     "arroz":  0.85,
     "leche":  1.03,
     "harina": 0.6,
@@ -217,10 +290,9 @@ def log_evento(evento, detalle=""):
 
 # ================= HELPERS =================
 def obtener_todos_ingredientes():
-    lista = []
-    for cat in ingredientes_por_categoria.values():
-        lista.extend(cat)
-    return sorted(lista)
+    """Lee los ingredientes directamente del catálogo MongoDB (no del dict hardcoded)."""
+    docs = list(col_ingredientes.find({}, {"nombre": 1}))
+    return sorted([d["nombre"].capitalize() for d in docs])
 
 def parse_ingredientes(texto):
     if not texto:
@@ -243,6 +315,11 @@ def normalizar(nombre):
 
 def clasificar(ingrediente):
     ingrediente = ingrediente.lower()
+    # Primero buscar en MongoDB por si fue agregado dinámicamente
+    doc = col_ingredientes.find_one({"nombre": ingrediente})
+    if doc and doc.get("categoria"):
+        return doc["categoria"]
+    # Fallback al diccionario hardcoded
     for categoria, lista in ingredientes_por_categoria.items():
         for item in lista:
             if item.lower() in ingrediente:
@@ -253,13 +330,11 @@ def obtener_densidad(nombre):
     doc = col_ingredientes.find_one({"nombre": nombre.lower()})
     if doc and doc.get("densidad"):
         return doc["densidad"]
-    # fallback a diccionario local
     return DENSIDADES_DEFAULT.get(nombre.lower(), None)
 
 def convertir_a_base(nombre, cantidad, unidad):
     unidad  = unidad.lower()
     nombre  = nombre.lower()
-    # "unidad" legacy → "pieza"
     if unidad == "unidad":
         unidad = "pieza"
     if unidad in ["ml", "litro", "taza", "cucharada"]:
@@ -280,7 +355,7 @@ def obtener_ingredientes_catalogo():
 def obtener_nombres_ingredientes():
     return [d["nombre"] for d in col_ingredientes.find({}, {"nombre": 1})]
 
-def agregar_ingrediente_catalogo(nombre, unidad):
+def agregar_ingrediente_catalogo(nombre, unidad, categoria="Otros"):
     nombre = nombre.lower().strip()
     if unidad == "unidad":
         unidad = "pieza"
@@ -288,9 +363,12 @@ def agregar_ingrediente_catalogo(nombre, unidad):
         col_ingredientes.insert_one({
             "nombre":      nombre,
             "unidad_base": unidad,
-            "densidad":    DENSIDADES_DEFAULT.get(nombre, None)
+            "densidad":    DENSIDADES_DEFAULT.get(nombre, None),
+            "categoria":   categoria
         })
         log_evento("crear_ingrediente", nombre)
+        return True   # fue creado nuevo
+    return False  # ya existía
 
 def actualizar_unidad_ingrediente(id_ing, nueva_unidad):
     if nueva_unidad == "unidad":
@@ -384,11 +462,10 @@ def actualizar_menu(dia, nueva_receta):
     log_evento("actualizar_menu", f"{dia}->{nueva_receta}")
 
 # ================= LISTA DE COMPRAS =================
-# Ingredientes que siempre deben expresarse en gramos (no ml)
 FORZAR_GRAMOS = {"pasta", "arroz", "harina", "azucar", "sal"}
 
 def lista_super():
-    menu_df  = pd.DataFrame(list(col_menu.find({"user_id": USER_ID})))
+    menu_df  = pd.DataFrame(list(col_menu.find()))
     recetas  = cargar_recetas()
     despensa = obtener_despensa()
 
@@ -406,27 +483,11 @@ def lista_super():
                 if nombre in FORZAR_GRAMOS and unidad == "ml":
                     densidad = obtener_densidad(nombre)
                     if densidad:
-                        cant   = cant * densidad
+                        cant  = cant * densidad
                         unidad = "g"
                 ingredientes_menu[nombre]["cantidad"] += cant
                 if not ingredientes_menu[nombre]["unidad"]:
                     ingredientes_menu[nombre]["unidad"] = unidad
-
-    casa = {}
-    if not despensa.empty:
-        for _, row in despensa.iterrows():
-            nombre = normalizar(row["ingrediente"])
-            cant, _ = convertir_a_base(nombre, row["cantidad"], row["unidad"])
-            casa[nombre] = casa.get(nombre, 0) + cant
-
-    agrupado = defaultdict(list)
-    for ing, data in ingredientes_menu.items():
-        falta = data["cantidad"] - casa.get(ing, 0)
-        if falta > 0:
-            agrupado[clasificar(ing)].append((ing, falta, data["unidad"]))
-
-    log_evento("generar_listaSuper")
-    return agrupado
 
     casa = {}
     if not despensa.empty:
@@ -446,6 +507,7 @@ def lista_super():
 # ================= OPCIONES DE UNIDAD =================
 UNIDADES = ["pieza", "kg", "g", "litro", "ml", "taza", "cucharada", "otro"]
 UNIDADES_RECETA = ["pieza", "kg", "g", "litro", "ml", "taza", "cucharada"]
+CATEGORIAS = ["Lácteos", "Carnes", "Granos", "Verduras", "Frutas", "Otros"]
 
 # ================= SIDEBAR =================
 opcion = st.sidebar.radio("Smart Kitchen", [
@@ -495,37 +557,42 @@ if opcion == "📊 Dashboard":
         actividad = logs_df.groupby(logs_df["timestamp"].dt.date).size().reset_index()
         actividad.columns = ["fecha", "eventos"]
 
-    fig2, ax2 = plt.subplots(figsize=(10, 5))
-    ax2.plot(actividad["fecha"], actividad["eventos"], marker="o", color="#461220", linewidth=2)
-    ax2.fill_between(actividad["fecha"], actividad["eventos"], alpha=0.1, color="#B23A48")
-    ax2.set_ylabel("Eventos", fontsize=12)
-    ax2.set_xlabel("Fecha", fontsize=12)
-    ax2.set_title("Actividad diaria", fontsize=14, color="#461220")
-    ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%d-%m-%Y"))
-    fig2.autofmt_xdate(rotation=45)
-    ax2.spines["top"].set_visible(False)
-    ax2.spines["right"].set_visible(False)
-    st.pyplot(fig2)
+        fig2, ax2 = plt.subplots(figsize=(10, 5))
+        ax2.plot(actividad["fecha"], actividad["eventos"], marker="o", color="#461220", linewidth=2)
+        ax2.fill_between(actividad["fecha"], actividad["eventos"], alpha=0.1, color="#B23A48")
+        ax2.set_ylabel("Eventos", fontsize=12)
+        ax2.set_xlabel("Fecha", fontsize=12)
+        ax2.set_title("Actividad diaria", fontsize=14, color="#461220")
+        ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%d-%m-%Y"))
+        fig2.autofmt_xdate(rotation=45)
+        ax2.spines["top"].set_visible(False)
+        ax2.spines["right"].set_visible(False)
+        st.pyplot(fig2)
 
-# ================= INGREDIENTES =================
 # ================= INGREDIENTES =================
 elif opcion == "🥗 Ingredientes":
     sk_title("🥗 Ingredientes")
-    sk_desc("Administra tu catálogo de ingredientes y define su unidad base.")
+    sk_desc("Administra tu catálogo de ingredientes y define su unidad base. Los ingredientes que agregues aquí estarán disponibles en Despensa y Recetas.")
 
     sk_subtitle("Agregar nuevo ingrediente")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     nuevo_nombre = col1.text_input("Nombre ingrediente")
     nueva_unidad = col2.selectbox("Unidad base", UNIDADES)
+    nueva_categoria = col3.selectbox("Categoría", CATEGORIAS)
     if nueva_unidad == "otro":
-        nueva_unidad = col2.text_input("Especifica unidad")
+        nueva_unidad = st.text_input("Especifica unidad")
+
     if st.button("➕ Agregar ingrediente", use_container_width=True):
         if nuevo_nombre:
-            agregar_ingrediente_catalogo(nuevo_nombre, nueva_unidad)
-            st.success("Ingrediente agregado")
+            creado = agregar_ingrediente_catalogo(nuevo_nombre, nueva_unidad, nueva_categoria)
+            if creado:
+                set_toast(f"✅ '{nuevo_nombre.capitalize()}' agregado al catálogo")
+            else:
+                set_toast(f"'{nuevo_nombre.capitalize()}' ya existe en el catálogo", tipo="error")
             st.rerun()
         else:
-            st.warning("Escribe un nombre")
+            set_toast("Escribe un nombre de ingrediente", tipo="error")
+            st.rerun()
 
     st.divider()
     sk_subtitle("Ingredientes registrados")
@@ -544,7 +611,7 @@ elif opcion == "🥗 Ingredientes":
                 nueva_unidad = st.text_input("Especifica", value=unidad_actual, key=f"otro_{row['_id']}")
             if nueva_unidad != unidad_actual:
                 actualizar_unidad_ingrediente(row["_id"], nueva_unidad)
-                st.success(f"{row['nombre']} actualizado a {nueva_unidad}")
+                set_toast(f"'{row['nombre'].capitalize()}' actualizado a {nueva_unidad}")
                 st.rerun()
 
 # ================= NUEVA RECETA =================
@@ -566,7 +633,9 @@ elif opcion == "➕ Nueva receta":
         col2.write(ing["cantidad"])
         col3.write(ing["unidad"])
         if col4.button("❌", key=f"del_{idx}"):
-            ingredientes_lista.pop(idx); st.rerun()
+            ingredientes_lista.pop(idx)
+            set_toast(f"'{ing['nombre'].capitalize()}' eliminado de la receta")
+            st.rerun()
 
     sk_subtitle("Agregar ingrediente")
     col1, col2, col3 = st.columns(3)
@@ -582,11 +651,14 @@ elif opcion == "➕ Nueva receta":
                 if opcion_ing == "Otro...":
                     agregar_ingrediente_catalogo(nuevo_ing, nueva_uni)
                 ingredientes_lista.append({"nombre": nuevo_ing.lower().strip(), "cantidad": nueva_cant, "unidad": nueva_uni})
+                set_toast(f"'{nuevo_ing.capitalize()}' agregado a la receta")
                 st.rerun()
             else:
-                st.warning("Ese ingrediente ya está")
+                set_toast("Ese ingrediente ya está en la receta", tipo="error")
+                st.rerun()
         else:
-            st.warning("Selecciona ingrediente")
+            set_toast("Selecciona un ingrediente primero", tipo="error")
+            st.rerun()
 
     st.divider()
     if st.button("💾 Guardar receta", use_container_width=True):
@@ -594,10 +666,11 @@ elif opcion == "➕ Nueva receta":
             texto = "\n".join([f"{i['nombre']}|{i['cantidad']}|{i['unidad']}" for i in ingredientes_lista])
             guardar_receta(nombre, texto)
             st.session_state.nueva_receta_ingredientes = []
-            st.success("Receta guardada"); st.rerun()
+            set_toast(f"Receta '{nombre}' guardada exitosamente 🍽️")
+            st.rerun()
         else:
-            st.warning("Falta nombre o ingredientes")
-
+            set_toast("Falta nombre o ingredientes", tipo="error")
+            st.rerun()
 
 # ================= RECETARIO =================
 elif opcion == "📖 Recetario":
@@ -623,7 +696,9 @@ elif opcion == "📖 Recetario":
                     col2.write(ing["cantidad"])
                     col3.write(ing["unidad"])
                     if col4.button("❌", key=f"del_{r['_id']}_{idx}"):
-                        ingredientes_lista.pop(idx); st.rerun()
+                        ingredientes_lista.pop(idx)
+                        set_toast(f"'{ing['nombre'].capitalize()}' eliminado")
+                        st.rerun()
 
                 sk_subtitle("Agregar ingrediente")
                 col1, col2, col3 = st.columns(3)
@@ -639,21 +714,26 @@ elif opcion == "📖 Recetario":
                             if opcion_ing == "Otro...":
                                 agregar_ingrediente_catalogo(nuevo_ing, nueva_uni)
                             ingredientes_lista.append({"nombre": nuevo_ing.lower().strip(), "cantidad": nueva_cant, "unidad": nueva_uni})
+                            set_toast(f"'{nuevo_ing.capitalize()}' agregado")
                             st.rerun()
                         else:
-                            st.warning("Ese ingrediente ya está")
+                            set_toast("Ese ingrediente ya está en la receta", tipo="error")
+                            st.rerun()
                     else:
-                        st.warning("Selecciona ingrediente")
+                        set_toast("Selecciona un ingrediente primero", tipo="error")
+                        st.rerun()
 
                 col_g, col_e = st.columns(2)
                 if col_g.button("💾 Guardar cambios", key=f"guardar_{r['_id']}", use_container_width=True):
                     texto = "\n".join([f"{i['nombre']}|{i['cantidad']}|{i['unidad']}" for i in ingredientes_lista])
                     actualizar_receta(r["_id"], nuevo_nombre, texto)
-                    st.success("Actualizado"); st.rerun()
+                    set_toast(f"Receta '{nuevo_nombre}' actualizada")
+                    st.rerun()
 
                 if col_e.button("🗑️ Eliminar", key=f"del_rec_{r['_id']}", use_container_width=True):
                     eliminar_receta(r["_id"])
-                    st.warning("Eliminada"); st.rerun()
+                    set_toast(f"Receta '{r['nombre']}' eliminada", tipo="error")
+                    st.rerun()
 
 # ================= PLAN INTELIGENTE =================
 elif opcion == "🧠 Plan inteligente":
@@ -662,9 +742,12 @@ elif opcion == "🧠 Plan inteligente":
 
     if st.button("🔄 Generar menú automático"):
         if cargar_recetas().empty:
-            st.warning("⚠️ Primero agrega recetas")
+            set_toast("Primero agrega recetas en el Recetario", tipo="error")
+            st.rerun()
         else:
-            generar_menu(); st.success("✅ Menú regenerado"); st.rerun()
+            generar_menu()
+            set_toast("Menú semanal generado exitosamente 📅")
+            st.rerun()
 
     menu_df = pd.DataFrame(list(col_menu.find()))
     recetas = cargar_recetas()
@@ -672,7 +755,9 @@ elif opcion == "🧠 Plan inteligente":
 
     if not menu_df.empty and nombres:
         if not set(menu_df["receta"]).issubset(set(nombres)):
-            generar_menu(); st.warning("Se regeneró el menú porque había recetas eliminadas"); st.rerun()
+            generar_menu()
+            set_toast("El menú fue regenerado porque había recetas eliminadas")
+            st.rerun()
 
         sk_subtitle("Menú de la semana")
         for _, row in menu_df.iterrows():
@@ -682,6 +767,8 @@ elif opcion == "🧠 Plan inteligente":
             nueva = col2.selectbox("", nombres, index=idx_actual, key=row["dia"])
             if nueva != row["receta"]:
                 actualizar_menu(row["dia"], nueva)
+                set_toast(f"{row['dia']} actualizado a '{nueva}'")
+                st.rerun()
 
 # ================= LISTA DE COMPRAS =================
 elif opcion == "🛒 Lista de compras":
@@ -701,15 +788,23 @@ elif opcion == "🥕 Despensa":
     sk_title("🥕 Despensa")
     sk_desc("Estos son los ingredientes que tienes en casa. Agrega los que hayas comprado.")
 
-    ing      = st.selectbox("Ingrediente", obtener_todos_ingredientes())
-    col1, col2 = st.columns(2)
-    cantidad = col1.number_input("Cantidad", min_value=0.0, value=1.0)
-    unidad   = col2.selectbox("Unidad", UNIDADES)
-    if unidad == "otro":
-        unidad = col2.text_input("Especifica unidad")
+    # FIX: usa obtener_todos_ingredientes() que lee de MongoDB, no del dict hardcoded
+    todos_ingredientes = obtener_todos_ingredientes()
 
-    if st.button("➕ Agregar a despensa", use_container_width=True):
-        agregar_despensa(ing, cantidad, unidad); st.rerun()
+    if not todos_ingredientes:
+        st.warning("No hay ingredientes en el catálogo. Agrega algunos en 🥗 Ingredientes primero.")
+    else:
+        ing      = st.selectbox("Ingrediente", todos_ingredientes)
+        col1, col2 = st.columns(2)
+        cantidad = col1.number_input("Cantidad", min_value=0.0, value=1.0)
+        unidad   = col2.selectbox("Unidad", UNIDADES)
+        if unidad == "otro":
+            unidad = col2.text_input("Especifica unidad")
+
+        if st.button("➕ Agregar a despensa", use_container_width=True):
+            agregar_despensa(ing, cantidad, unidad)
+            set_toast(f"'{ing}' agregado a tu despensa 🥕")
+            st.rerun()
 
     st.divider()
     sk_subtitle("Ingredientes en casa")
@@ -719,4 +814,6 @@ elif opcion == "🥕 Despensa":
         col1.write(row["ingrediente"].capitalize())
         col2.write(f"{row['cantidad']} {row['unidad']}")
         if col3.button("❌", key=str(row["_id"])):
-            eliminar_despensa(row["_id"]); st.rerun()
+            eliminar_despensa(row["_id"])
+            set_toast(f"'{row['ingrediente'].capitalize()}' eliminado de la despensa", tipo="error")
+            st.rerun()
