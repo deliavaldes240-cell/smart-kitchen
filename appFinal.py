@@ -703,8 +703,9 @@ elif opcion == "🥕 Despensa":
         unidad = col2.text_input("Especifica unidad")
 
     if st.button("➕ Agregar a despensa", use_container_width=True):
-        agregar_despensa(ing, cantidad, unidad); st.rerun()
+        agregar_despensa(ing, cantidad, unidad); 
         mostrar_exito("✅ Ingrediente agregado a la despensa")
+        st.rerun()
 
     st.divider()
     sk_subtitle("Ingredientes en casa")
@@ -714,5 +715,6 @@ elif opcion == "🥕 Despensa":
         col1.write(row["ingrediente"].capitalize())
         col2.write(f"{row['cantidad']} {row['unidad']}")
         if col3.button("❌", key=str(row["_id"])):
-            eliminar_despensa(row["_id"]); st.rerun()
+            eliminar_despensa(row["_id"])
             mostrar_exito("🗑️ Ingrediente eliminado de la despensa")
+            st.rerun()
